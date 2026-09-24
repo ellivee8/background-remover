@@ -1,0 +1,10 @@
+# photos and results are not part of the program
+/*.jpg
+/*.jpeg
+/*.png
+output/
+.debug/
+.bgr-data/
+.venv/
+__pycache__/
+*.pyc

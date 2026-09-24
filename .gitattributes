@@ -1,0 +1,7 @@
+* text=auto
+*.jpg binary
+*.png binary
+# Windows batch files must keep CRLF line endings (labels/goto break with LF).
+# Stored as-is (no conversion) so every checkout and "Download ZIP" gets CRLF.
+# (must come after "* text=auto" - later lines win)
+*.bat -text

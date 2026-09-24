@@ -1,0 +1,80 @@
+name: test
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  # Runs the real Windows launcher end-to-end, like a user double-clicking it.
+  windows-launcher:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check .bat has CRLF line endings
+        shell: pwsh
+        run: |
+          $bytes = [IO.File]::ReadAllBytes("remove_background.bat")
+          $text = [Text.Encoding]::ASCII.GetString($bytes)
+          if (($text -split "`r`n").Count -ne ($text -split "`n").Count) { throw "remove_background.bat has LF-only line endings" }
+
+      - name: Create sample photos (folder with spaces, parentheses and non-ASCII file name)
+        shell: pwsh
+        run: |
+          python -m pip install --quiet numpy opencv-python-headless
+          python tests/make_sample.py "$env:RUNNER_TEMP\test dir (1)"
+
+      - name: First run (does the setup)
+        shell: cmd
+        env:
+          BGR_NO_PAUSE: "1"
+        run: call remove_background.bat "%RUNNER_TEMP%\test dir (1)"
+
+      - name: Check results
+        shell: pwsh
+        run: python tests/check_output.py "$env:RUNNER_TEMP\test dir (1)"
+
+      - name: Second run (setup must be skipped)
+        shell: cmd
+        env:
+          BGR_NO_PAUSE: "1"
+        run: |
+          call remove_background.bat "%RUNNER_TEMP%\test dir (1)" > run2.log 2>&1
+          type run2.log
+          findstr /c:"First-time setup" run2.log && (echo Setup ran again unexpectedly & exit /b 1)
+          exit /b 0
+
+      - name: Broken environment is repaired automatically
+        shell: cmd
+        env:
+          BGR_NO_PAUSE: "1"
+        run: |
+          del /q "%LOCALAPPDATA%\BackgroundRemover\venv\Scripts\python.exe"
+          call remove_background.bat "%RUNNER_TEMP%\test dir (1)"
+
+      - name: Double-click style run (no arguments, from another working directory)
+        shell: cmd
+        env:
+          BGR_NO_PAUSE: "1"
+        run: |
+          copy /y "%RUNNER_TEMP%\test dir (1)\sample leaves.jpg" . >nul
+          cd /d "%RUNNER_TEMP%"
+          call "%GITHUB_WORKSPACE%\remove_background.bat"
+          if not exist "%GITHUB_WORKSPACE%\output\sample leaves_1.png" (echo missing output & exit /b 1)
+
+  # Algorithm test on the oldest and newest supported Python.
+  algorithm:
+    strategy:
+      matrix:
+        python: ["3.9", "3.13"]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m pip install -r requirements.txt
+      - run: python tests/make_sample.py samples
+      - run: python remove_background.py samples
+      - run: python tests/check_output.py samples
